@@ -1,0 +1,142 @@
+---
+title: "Movie Lens Recommendation System"
+author: "Tuong Nguyen"
+date: "February 18, 2019"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include=FALSE}
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+
+dl <- tempfile()
+download.file("http://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+
+ratings <- read.table(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
+                      col.names = c("userId", "movieId", "rating", "timestamp"))
+
+movies <- str_split_fixed(readLines(unzip(dl, "ml-10M100K/movies.dat")), "\\::", 3)
+colnames(movies) <- c("movieId", "title", "genres")
+movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(levels(movieId))[movieId],
+                                           title = as.character(title),
+                                           genres = as.character(genres))
+movielens <- left_join(ratings, movies, by = "movieId")
+```
+## Abstract
+This project is to create a movie recommendation system, since online video watching has been increasing amount as more people are cutting their traditional cable TV.  This project will use multi linear regression modeling to give the predicted rating for a movie.  It will show that the more independent variables that used in the model, it creates more accurate the model.  This can be verified with the RMSE.  
+
+## Introduction
+Online shopping and video watching has been explosive within the last decade.  It is only fitting that online companies such as Amazon, Netflix, etc. would want to cash in on it.  A recommendation system from such companies would attract more customers.
+
+A recommendation system is an important component part of online experiences for many users.  It acts as a filtering system which recognizes the users' past ratings for products and make recommendations to which products the users would most likely choose.  This will enhance the users experiences with the online shoping and increase the value of the services.
+
+This paper will explore a movie recommendation system which uses the Multiple Linear Regression method.  It will then use the RMSE score to determine the prediction accuracy.  RMSE (root mean squared error) is the measure of how well the model performed.  It measures the difference between predicted values and the actual values.  The error term is important because the goal is to minimize the error.
+
+## Data
+The data for this paper was obtained from https://grouplens.org/datasets/movielens/10m/.  The data set contains *1000054* ratings and *95580* tags applied to *10681* movies by *71567* users for online recommendation service MovieLens.  All users were selected at random and rated at least 20 movies.  Each user represented with a unique ID.  The data file was in zipped format and downloaded using R programming function download.file().  The zipped file contains 3 different files: movies.dat, ratings.dat and tags.dat.  The movie ratings range from 1-5.  The data does not contain any empty or zero ratings.  The following histogram in Figure 1 showed the ratings distribution where ratings 4 and 5 have the most ratings.  The data was then partitioned into edx and validation set.  The validation will be test set where the RSME will be tested.  The histograms also showed that there are some users who give more ratings and some movies get rated more than others.
+```{r, echo=FALSE, out.height="3in", out.width="0.48\\textwidth", fig.align='center', fig.show='hold', fig.cap="MovieLens Ratings/movies/users distributions" }
+## plot the ratings into histogram.
+movielens %>% group_by(rating) %>% qplot(rating, geom="histogram", bins = 5, data = ., color ="black", xlab="Rating", ylab="Count")
+
+## plot the number of movies rated
+movielens %>% count(movieId) %>% ggplot(aes(n)) + geom_histogram(bins=50, color = "black") +
+  scale_x_log10() + ggtitle("Movies")
+
+## plot the number of users that rated the movie
+movielens %>% count(userId) %>% ggplot(aes(n)) + geom_histogram(bins = 50, color = "black") +
+  scale_x_log10() + ggtitle("Users")
+
+```
+
+```{r, include=FALSE }
+# Validation set will be 10% of MovieLens data
+set.seed(1)
+## Create 2 partition, training and test set.
+test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
+edx <- movielens[-test_index,]
+temp <- movielens[test_index,]
+
+# Make sure userId and movieId in validation set are also in edx set
+validation <- temp %>% 
+  semi_join(edx, by = "movieId") %>%
+  semi_join(edx, by = "userId")
+
+# Add rows removed from validation set back into edx set
+removed <- anti_join(temp, validation)
+edx <- rbind(edx, removed)
+
+rm(dl, ratings, movies, test_index, temp, movielens, removed)
+```
+
+## Methods
+This paper will concentrate on the Multiple Linear Regression method to build the movie recommendation system.  The model will predict the rating for movie *i* by user *u* and average ranking for movie *i*.  So, the linear regression model looks as follows:
+  $$Y_{u,i} = \mu + b_i + b_u + \epsilon_{u,i}$$
+where \(Y_{u,i}\) denotes as the dependent variable, rating for movie *i* by independent variables user *u*, \(\mu\) is the average of ratings, \(b_i\) represents the average ranking for movie *i* and \(b_u\) is a user specific effect. \(\epsilon_i\) are independent errors that are centered at 0 and \(\mu\) and sampled at the same distribution.  Since our data is too large to run under R studio with linear model function *lm()* and *predict()* using our current Windows 10 machine with [12.0 GB of RAM and processor with Intel(R) Core(TM) i5-4200U CPU @ 1.60GHz, 2301 Mhz, 2 Core(s), 4 Logical Processor(s)]
+, the study estimated those values using R programming languages.
+```{r, eval = FALSE}
+lm(rating ~ as.factor(userId) + as.factor(movieId), data = edx)
+```
+## Analysis
+The \(\mu\) represents the average of all ratings in training set, edx, and \(b_i\) represent the average ranking for all of the movies.  The calculation of these values using R with resulted in \(\mu = 3.512465\) and histogram plot of all \(b_i\).  The equation above can be rewritten, assuming the user is not affecting the rating outcome, then  
+\(\widehat b_i = y_{u,i} - \widehat \mu\). 
+
+Since this is a multi linear regression, the users will alsoaffect the movie ratings outcome since some of the users rated more than others.  The calculation for the average users' ratings, are represented with \(b_u\), so the new equation, \(\widehat b_u = y_{u,i} - \widehat \mu - \widehat b_i\). Now, the movie averages and user rating averages can be joined with the validation set to obtain the predicted ratings.  The table below shows the first few movies with the predicted ratings. From the table, it shows that "Dumb and Dumber" movie has a five rating.  The users average rating, \(b_u = 1.679234\), movie average rating, \(b_i = -0.5773440\), and the predicted rating \(y_{u,i} = 4.614356\).
+```{r averageuser, echo = FALSE, out.height="3in", out.width="0.48\\textwidth", fig.align='center', fig.show='hold', fig.cap="Movie Averages distributions" }
+# calculate the average of all ratings.
+mu <- mean(edx$rating)
+# calculate the movie average.
+movie_avgs <- edx %>% group_by(movieId) %>% summarize(bi = mean(rating - mu))
+# plot the histogram of movie average.
+movie_avgs %>% ggplot(aes(bi)) + geom_histogram(bins = 10, color="black")
+# calcuate the ratings for each users.
+user_avgs <- edx %>% left_join(movie_avgs, by='movieId') %>% group_by(userId) %>%
+  summarize(bu = mean(rating - mu - bi))
+
+# Calculate the predictions.
+predicted_ratings <- validation %>% left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>% mutate(pred = mu + bi + bu)
+# Print the first 5 movies rating predictions.
+head(predicted_ratings, n = 5) %>% select(title, bi, bu, pred) %>% 
+  knitr::kable(caption = "Predicted Rating Results sample")
+```
+
+## Results
+Now, are these predictions accurate?  To answer this question, RMSE was used to determine the accuracy of the predictions.  The formula for RMSE(root mean squared error) is as follows:
+$$ RMSE = \sqrt{\frac{1}{N}\sum_{u,i}(\widehat y_{u,i} - y_{u,i})^2} $$
+where \(\widehat y_{u,i}\) is the prediction and \(y_{u.i}\) is the actual, the validation set.  Since RMSE measured errors, it is best to achieve a low value as possible.  In R Studio, the following code was used to calculate the RMSE and its results, showed 0.8653488.
+
+```{r}
+# Calculate the RMSE of prediction using both movie and fuser effect
+rmsewith2var <- RMSE(predicted_ratings$pred, validation$rating)
+print(rmsewith2var)
+```
+
+If users effect was not taken into account, the RMSE would be much larger from the table shown below.  However, adding genres to the equation model reduces the RMSE down less than .001.  Thus, user and movie effect has the most impact on the multi linear model of prediction.
+
+```{r, echo=FALSE, fig.align='center', fig.show='hold', message=FALSE, warning=FALSE}
+rmse_results <- data_frame(method='User and Movie Effect', RMSE=rmsewith2var)
+predwouser_ratings <- validation %>% left_join(movie_avgs, by='movieId') %>%
+  group_by(movieId) %>% mutate(pred = mu + bi)
+#Calculate the RMSE with only movie effect.
+rmsewithmovieeffect <- RMSE(predwouser_ratings$pred, validation$rating)
+rmse_results<-bind_rows(rmse_results,data_frame(method='Movie Effect', RMSE=rmsewithmovieeffect))
+
+genres_avgs <- edx %>% left_join(user_avgs, by='userId') %>% 
+    left_join(movie_avgs, by='movieId') %>% group_by(genres) %>%
+  summarize(gu = mean(rating - mu - bi - bu))
+
+predicted_ratings_genres <- validation %>% left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  left_join(genres_avgs, by='genres') %>% mutate(pred = mu + bi + bu + gu)
+
+predicted_genresRMSE <- RMSE(predicted_ratings_genres$pred, validation$rating)
+rmse_results <- bind_rows(rmse_results, data_frame(method='Movie, User, and Genres Effect', RMSE=predicted_genresRMSE))
+rmse_results %>% knitr::kable(caption = 'Summary of RMSEs')
+```
+
+## Conclusion
+The multi linear model does a good job in predicting the rating for the movie.  Adding more independent variables such as user and movie will lowers the RMSE as compared to one variable such as user or movie effect in the model.  However, the additon of genres to the linear model, it reduces the RMSE by only .001.  Thus, genres doesn't have much effect on the linear model.  As limitation to computing power, the linear model or predict function can't be used, so the project was forced to used normal calculation using R studio.  For future projects, with enhance computing power, it would test out whether *Knn* and K-mean clustering method will do a better job of reducing the RMSE will be possible.  In addition, implement residuals and errors to see if the model will improve.
